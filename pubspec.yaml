@@ -1,0 +1,11 @@
+name: graphql_builder
+description: Typed, composable GraphQL query builders with scoped filters and reusable selections.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: '>=3.8.0 <4.0.0'
+
+dev_dependencies:
+  lints: ^5.1.1
+  test: ^1.26.3
