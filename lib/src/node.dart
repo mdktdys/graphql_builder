@@ -3,8 +3,8 @@ part of '../graphql_builder.dart';
 /// An immutable reusable selection, including its arguments and pagination.
 ///
 /// Produced by [Node.freeze]. [Node.addAll] never silently discards filters.
-final class Selection<S> {
-  final NodeType<S> type;
+final class Selection {
+  final NodeType type;
   final List<_Field> _fields;
   final List<_Argument> _arguments;
   final Page? _page;
@@ -23,10 +23,10 @@ final class Selection<S> {
 /// Consumer packages may extend this class to expose their own named nodes.
 /// Use one shared [NodeType] instance for each schema object type. [root] and
 /// [relation] describe where a node is placed, independently of its type.
-class Node<S> {
-  final NodeType<S> type;
-  final QueryRoot<S>? root;
-  final Relation<Object?, S>? relation;
+class Node {
+  final NodeType type;
+  final QueryRoot? root;
+  final Relation? relation;
   final String? alias;
   final List<_Field> _fields = [];
   final List<_Argument> _arguments = [];
@@ -42,8 +42,16 @@ class Node<S> {
     }
   }
 
+  /// Creates a node using the type descriptor owned by [root].
+  Node.fromRoot(QueryRoot root, {String? alias})
+    : this(root.type, root: root, alias: alias);
+
+  /// Creates a node using the child type descriptor of [relation].
+  Node.fromRelation(Relation relation, {String? alias})
+    : this(relation.child, relation: relation, alias: alias);
+
   /// Adds a scalar selection belonging to this exact schema type.
-  void add(Field<S> field) {
+  void add(Field field) {
     if (!identical(field.owner, type)) {
       throw ArgumentError('Field ${field.name} belongs to a different type.');
     }
@@ -59,7 +67,7 @@ class Node<S> {
   ///
   /// A conflict leaves this builder unchanged. Root/relation capabilities are
   /// checked when the node is attached to its final location.
-  void addAll(Selection<S> selection) {
+  void addAll(Selection selection) {
     if (!identical(selection.type, type)) {
       throw ArgumentError('Selection belongs to a different type.');
     }
@@ -77,13 +85,13 @@ class Node<S> {
   }
 
   /// Takes a deep immutable snapshot. Empty selections are rejected.
-  Selection<S> freeze() => Selection<S>._(type, _fields, _arguments, _page);
+  Selection freeze() => Selection._(type, _fields, _arguments, _page);
 
   /// Takes a snapshot of [child] under [via] or its constructor's relation.
   ///
   /// A relation is always required: the same child type can be attached through
   /// several different fields, so selecting one implicitly is ambiguous.
-  void addNode<C>(Node<C> child, {Relation<S, C>? via}) {
+  void addNode(Node child, {Relation? via}) {
     final binding = via ?? child.relation;
     if (binding == null) {
       throw StateError('Specify a relation on the child node or pass via.');
@@ -127,8 +135,8 @@ Page? _mergePage(Page? previous, Page? next) {
   return next ?? previous;
 }
 
-Map<String, Object?> _bindArguments<S>(
-  Selection<S> selection,
+Map<String, Object?> _bindArguments(
+  Selection selection,
   ArgumentScope scope,
   PagePagination? pagination,
 ) {

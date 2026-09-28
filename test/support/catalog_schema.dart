@@ -5,37 +5,37 @@ class Book {}
 class Author {}
 
 class CatalogSchema {
-  final bookType = NodeType<Book>('Book');
-  final authorType = NodeType<Author>('Author');
+  final bookType = NodeType('Book');
+  final authorType = NodeType('Author');
   final booksScope = ArgumentScope('catalog.books');
   final featuredScope = ArgumentScope('catalog.featured');
   final contributorsScope = ArgumentScope('book.contributors');
 
-  late final books = QueryRoot<Book>(
+  late final books = QueryRoot(
     'books',
     type: bookType,
     scope: booksScope,
     pagination: PagePagination(),
   );
-  late final featured = QueryRoot<Book>(
+  late final featured = QueryRoot(
     'featuredBooks',
     type: bookType,
     scope: featuredScope,
   );
-  late final contributors = Relation<Book, Author>(
+  late final contributors = Relation(
     'contributors',
     parent: bookType,
     child: authorType,
     scope: contributorsScope,
     pagination: PagePagination(),
   );
-  late final editor = Relation<Book, Author>(
+  late final editor = Relation(
     'editor',
     parent: bookType,
     child: authorType,
     scope: contributorsScope,
   );
-  late final id = ScalarField<Book, NumericId>(
+  late final id = ScalarField<NumericId>(
     owner: bookType,
     input: InputDefinition<NumericId>(
       'id',
@@ -44,7 +44,7 @@ class CatalogSchema {
       operators: {FilterOperator.equal, FilterOperator.inList},
     ),
   );
-  late final title = ScalarField<Book, String>(
+  late final title = ScalarField<String>(
     owner: bookType,
     input: InputDefinition<String>(
       'title',
@@ -54,7 +54,7 @@ class CatalogSchema {
       sortArgument: 'title__OrderBy',
     ),
   );
-  late final available = ScalarField<Book, bool>(
+  late final available = ScalarField<bool>(
     owner: bookType,
     input: InputDefinition<bool>(
       'available',
@@ -63,7 +63,7 @@ class CatalogSchema {
       operators: {FilterOperator.boolean, FilterOperator.equal},
     ),
   );
-  late final price = ComparableField<Book, num>(
+  late final price = ComparableField<num>(
     owner: bookType,
     input: InputDefinition<num>(
       'price',
@@ -81,7 +81,7 @@ class CatalogSchema {
       sortArgument: 'price__OrderBy',
     ),
   );
-  late final published = ComparableField<Book, DateTime>(
+  late final published = ComparableField<DateTime>(
     owner: bookType,
     input: InputDefinition<DateTime>(
       'published',
@@ -111,9 +111,9 @@ class CatalogSchema {
       },
     ),
   );
-  late final authorId = Field<Author>('id', owner: authorType);
-  late final authorName = Field<Author>('name', owner: authorType);
-  late final authorActive = ScalarField<Author, bool>(
+  late final authorId = Field('id', owner: authorType);
+  late final authorName = Field('name', owner: authorType);
+  late final authorActive = ScalarField<bool>(
     owner: authorType,
     input: InputDefinition<bool>(
       'active',
@@ -123,15 +123,14 @@ class CatalogSchema {
     ),
   );
 
-  Node<Book> bookNode({String? alias}) =>
-      Node<Book>(bookType, root: books, alias: alias);
-  Node<Author> authorNode({String? alias}) =>
-      Node<Author>(authorType, relation: contributors, alias: alias);
-  String render(Node<Book> node) => (Query()..add(node)).build().query;
+  Node bookNode({String? alias}) => Node(bookType, root: books, alias: alias);
+  Node authorNode({String? alias}) =>
+      Node(authorType, relation: contributors, alias: alias);
+  String render(Node node) => (Query()..add(node)).build().query;
 }
 
 /// Verifies subclassing through the package's public entry point.
-class CatalogBookNode extends Node<Book> {
+class CatalogBookNode extends Node {
   CatalogBookNode(CatalogSchema schema)
     : super(schema.bookType, root: schema.books);
 }

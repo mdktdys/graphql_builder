@@ -1,38 +1,30 @@
 import 'package:graphql_builder/graphql_builder.dart';
 
-final class Employee {
-  final int id;
-  const Employee({required this.id});
-}
+final class EmployeeNode extends Node {
+  EmployeeNode.one() : super.fromRoot(employeeRoot);
+  EmployeeNode.list() : super.fromRoot(employeesRoot);
 
-final class EmployeeNode extends Node<Employee> {
-  static final nodeType = NodeType<Employee>();
-  static final QueryRoot<Employee> employeesRoot = QueryRoot<Employee>(
-    type: nodeType,
-    'employees',
+  static final QueryRoot employeesRoot = QueryRoot('employees');
+  static final QueryRoot employeeRoot = QueryRoot.withTypeOf(
+    'employee',
+    employeesRoot,
   );
 
-  static final id = ScalarField<Employee, int>(
-    owner: nodeType,
+  static final ScalarField<int> id = ScalarField<int>(
+    owner: employeesRoot,
     input: InputDefinition<int>(
       'id',
       codec: ValueCodecs.integer,
-      scopes: {
-        employeesRoot.scope
-      },
-      operators: {
-        FilterOperator.equal
-      },
+      scopes: {employeesRoot.scope, employeeRoot.scope},
+      operators: {FilterOperator.equal},
     ),
   );
-
-  EmployeeNode() : super(nodeType, root: employeesRoot);
 }
 
 void main() {
-  final employee = EmployeeNode()
+  final employee = EmployeeNode.one()
     ..add(EmployeeNode.id)
-    ..addFilters(Filters()..add(EqualFilter(EmployeeNode.id), 42));
+    ..addFilters(Filters()..add(EqualFilter(EmployeeNode.id), 3));
 
   print((Query()..add(employee)).build().query);
 }

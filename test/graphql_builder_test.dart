@@ -36,17 +36,41 @@ void main() {
   setUp(() => s = CatalogSchema());
 
   group('declaration API', () {
-    test('unlabeled descriptors use distinct automatic argument scopes', () {
-      final bookType = NodeType<Book>();
-      final authorType = NodeType<Author>();
-      final books = QueryRoot<Book>('books', type: bookType);
-      final otherBooks = QueryRoot<Book>('otherBooks', type: bookType);
-      final author = Relation<Book, Author>(
-        'author',
-        parent: bookType,
-        child: authorType,
+    test('a model-free node shares selections across roots of one type', () {
+      final employees = QueryRoot('employees');
+      final employee = QueryRoot.withTypeOf('employee', employees);
+      final id = ScalarField<int>(
+        owner: employees,
+        input: InputDefinition<int>(
+          'id',
+          codec: ValueCodecs.integer,
+          scopes: {employees.scope, employee.scope},
+          operators: {FilterOperator.equal},
+        ),
       );
-      final bookId = ScalarField<Book, int>(
+      final common = (Node.fromRoot(employees)..add(id)).freeze();
+      final one = Node.fromRoot(employee)
+        ..addAll(common)
+        ..addFilters(Filters()..add(EqualFilter(id), 3));
+
+      expect(
+        compact((Query()..add(one)).build().query),
+        'query{employee(id:3){id}}',
+      );
+    });
+
+    test('unlabeled descriptors use distinct automatic argument scopes', () {
+      final bookType = NodeType();
+      final authorType = NodeType();
+      final books = QueryRoot('books', type: bookType);
+      final otherBooks = QueryRoot('otherBooks', type: bookType);
+      final authors = QueryRoot('authors', type: authorType);
+      final author = Relation.betweenRoots(
+        'author',
+        parent: books,
+        child: authors,
+      );
+      final bookId = ScalarField<int>(
         owner: bookType,
         input: InputDefinition<int>(
           'id',
@@ -55,7 +79,7 @@ void main() {
           operators: {FilterOperator.equal},
         ),
       );
-      final authorId = ScalarField<Author, int>(
+      final authorId = ScalarField<int>(
         owner: authorType,
         input: InputDefinition<int>(
           'id',
@@ -65,11 +89,11 @@ void main() {
         ),
       );
 
-      final node = Node<Book>(bookType, root: books)
+      final node = Node(bookType, root: books)
         ..add(bookId)
         ..addFilters(Filters()..add(EqualFilter(bookId), 42))
         ..addNode(
-          Node<Author>(authorType, relation: author)
+          Node(authorType, relation: author)
             ..add(authorId)
             ..addFilters(Filters()..add(EqualFilter(authorId), 7)),
         );
@@ -78,7 +102,7 @@ void main() {
         'query{books(id:42){idauthor(id:7){id}}}',
       );
 
-      final wrongRoot = Node<Book>(bookType, root: otherBooks)
+      final wrongRoot = Node(bookType, root: otherBooks)
         ..add(bookId)
         ..addFilters(Filters()..add(EqualFilter(bookId), 42));
       expect(() => Query()..add(wrongRoot), rejects);
@@ -343,7 +367,7 @@ void main() {
 
   group('schema capabilities and scopes', () {
     test('wire names and sort capability are explicitly declared', () {
-      final field = ComparableField<Book, num>(
+      final field = ComparableField<num>(
         owner: s.bookType,
         name: 'price',
         input: InputDefinition<num>(
@@ -370,7 +394,7 @@ void main() {
       expect(() => EqualFilter(s.ownerIds, 1), rejects);
       expect(() => NotInFilter(s.id, [1]), rejects);
       expect(() => SortBy(s.available, SortDirection.ascending), rejects);
-      final equalityOnly = ComparableField<Book, num>(
+      final equalityOnly = ComparableField<num>(
         owner: s.bookType,
         input: InputDefinition<num>(
           'amount',
@@ -383,9 +407,9 @@ void main() {
     });
 
     test('field and selection type identity cannot be forged by a name', () {
-      final lookalike = NodeType<Book>('Book');
-      final alien = Field<Book>('id', owner: lookalike);
-      final selection = (Node<Book>(lookalike)..add(alien)).freeze();
+      final lookalike = NodeType('Book');
+      final alien = Field('id', owner: lookalike);
+      final selection = (Node(lookalike)..add(alien)).freeze();
       final node = s.bookNode()..add(s.title);
       final before = s.render(node);
       expect(() => node.add(alien), rejects);
@@ -435,7 +459,7 @@ void main() {
       expect(
         () => Query()
           ..add(
-            Node<Book>(s.bookType, root: s.featured)
+            Node(s.bookType, root: s.featured)
               ..add(s.id)
               ..addFilters(Filters()..add(BooleanFilter(s.available), true)),
           ),
@@ -467,7 +491,7 @@ void main() {
       expect(
         () => Query()
           ..add(
-            Node<Book>(s.bookType, root: s.featured)
+            Node(s.bookType, root: s.featured)
               ..add(s.id)
               ..addFilters(filters),
           ),
@@ -500,7 +524,7 @@ void main() {
 
   group('relations and snapshots', () {
     test('a child selection can be reused through explicit relations', () {
-      final child = Node<Author>(s.authorType)..add(s.authorId);
+      final child = Node(s.authorType)..add(s.authorId);
       final books = s.bookNode()
         ..addNode(child, via: s.contributors)
         ..addNode(child, via: s.editor);
@@ -520,17 +544,17 @@ void main() {
     test('relations are required and parent/child identities are checked', () {
       final node = s.bookNode()..add(s.id);
       final before = s.render(node);
-      final child = Node<Author>(s.authorType)..add(s.authorId);
-      final wrongParent = Relation<Book, Author>(
+      final child = Node(s.authorType)..add(s.authorId);
+      final wrongParent = Relation(
         'contributors',
-        parent: NodeType<Book>('Book'),
+        parent: NodeType('Book'),
         child: s.authorType,
         scope: s.contributorsScope,
       );
-      final wrongChild = Relation<Book, Author>(
+      final wrongChild = Relation(
         'contributors',
         parent: s.bookType,
-        child: NodeType<Author>('Author'),
+        child: NodeType('Author'),
         scope: s.contributorsScope,
       );
       expect(() => node.addNode(child), rejects);
@@ -540,10 +564,10 @@ void main() {
     });
 
     test('query only accepts roots bound to the same type identity', () {
-      expect(() => Query()..add(Node<Book>(s.bookType)..add(s.id)), rejects);
+      expect(() => Query()..add(Node(s.bookType)..add(s.id)), rejects);
       expect(() => Query()..add(s.authorNode()..add(s.authorId)), rejects);
       expect(
-        () => Query()..add(Node<Book>(NodeType<Book>('Book'), root: s.books)),
+        () => Query()..add(Node(NodeType('Book'), root: s.books)),
         rejects,
       );
     });
@@ -610,10 +634,9 @@ void main() {
     });
 
     test('aliases allow differing arguments on the same relation', () {
-      Node<Author> authors(String alias, bool active) =>
-          s.authorNode(alias: alias)
-            ..add(s.authorId)
-            ..addFilters(Filters()..add(BooleanFilter(s.authorActive), active));
+      Node authors(String alias, bool active) => s.authorNode(alias: alias)
+        ..add(s.authorId)
+        ..addFilters(Filters()..add(BooleanFilter(s.authorActive), active));
       final query = compact(
         s.render(
           s.bookNode()
@@ -671,7 +694,7 @@ void main() {
     });
 
     test('a relation merge conflict leaves all prior selections unchanged', () {
-      Node<Author> author(bool active, Field<Author> field) => s.authorNode()
+      Node author(bool active, Field field) => s.authorNode()
         ..add(field)
         ..addFilters(Filters()..add(BooleanFilter(s.authorActive), active));
       final node = s.bookNode()..addNode(author(true, s.authorId));
@@ -702,11 +725,8 @@ void main() {
           ..add(s.bookNode()..add(s.title));
         expect(compact(query.build().query), contains('books{idtitle}'));
         final before = query.build().query;
-        final conflict = Node<Book>(
-          s.bookType,
-          root: s.featured,
-          alias: 'books',
-        )..add(s.price);
+        final conflict = Node(s.bookType, root: s.featured, alias: 'books')
+          ..add(s.price);
         expect(() => query.add(conflict), rejects);
         expect(query.build().query, before);
       },
@@ -715,7 +735,7 @@ void main() {
 
   group('pagination, sorting and payload', () {
     test('pagination honors argument names and first-page offset', () {
-      final root = QueryRoot<Book>(
+      final root = QueryRoot(
         'catalog',
         type: s.bookType,
         scope: s.booksScope,
@@ -725,7 +745,7 @@ void main() {
           firstPage: 1,
         ),
       );
-      final node = Node<Book>(s.bookType, root: root)
+      final node = Node(s.bookType, root: root)
         ..add(s.id)
         ..paginate(Page(index: 2, size: 20));
       final query = compact(s.render(node));
@@ -750,7 +770,7 @@ void main() {
       expect(
         () => Query()
           ..add(
-            Node<Book>(s.bookType, root: s.featured)
+            Node(s.bookType, root: s.featured)
               ..add(s.id)
               ..paginate(Page()),
           ),
@@ -802,9 +822,9 @@ void main() {
 
     test('schema names and required scopes are validated', () {
       for (final invalid in ['', '1books', 'book-name', 'books) { hidden']) {
-        expect(() => NodeType<Book>(invalid), rejects);
+        expect(() => NodeType(invalid), rejects);
         expect(() => Query(name: invalid), rejects);
-        expect(() => Field<Book>(invalid, owner: s.bookType), rejects);
+        expect(() => Field(invalid, owner: s.bookType), rejects);
         expect(() => s.bookNode(alias: invalid), rejects);
       }
       expect(() => ArgumentScope(''), rejects);
@@ -820,7 +840,7 @@ void main() {
     });
 
     test('identifier validation rejects a trailing newline', () {
-      expect(() => NodeType<Book>('Book\n'), rejects);
+      expect(() => NodeType('Book\n'), rejects);
       expect(() => Query(name: 'Catalog\n'), rejects);
       expect(() => EnumValue('READY\n'), rejects);
       expect(() => NumericId('12\n'), rejects);

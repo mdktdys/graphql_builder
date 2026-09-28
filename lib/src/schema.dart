@@ -4,15 +4,15 @@ part of '../graphql_builder.dart';
 ///
 /// Descriptors use identity equality. Declare one shared instance for every
 /// object type and reuse it in fields, roots, relations and nodes.
-final class NodeType<S> {
+final class NodeType {
   /// A diagnostic label. It is never serialized into a query.
   final String name;
 
   /// Creates a reusable descriptor for an object type.
   ///
-  /// An omitted label defaults to the Dart type's display name. Explicit
-  /// labels are validated as GraphQL names for backwards compatibility.
-  NodeType([String? name]) : name = name == null ? '$S' : _name(name);
+  /// An omitted label is only used for diagnostics. Explicit labels are
+  /// validated as GraphQL names.
+  NodeType([String? name]) : name = name == null ? 'unnamed type' : _name(name);
 }
 
 /// Identifies a root or relation on which arguments may be used.
@@ -36,12 +36,12 @@ final class ArgumentScope {
 }
 
 /// Declares a selectable field on the query root.
-final class QueryRoot<S> {
+final class QueryRoot {
   /// The GraphQL field name.
   final String name;
 
   /// The object type selected by this root.
-  final NodeType<S> type;
+  final NodeType type;
 
   /// The identity of the arguments accepted by this root.
   ///
@@ -54,23 +54,32 @@ final class QueryRoot<S> {
   /// Creates a root field descriptor.
   QueryRoot(
     String name, {
-    required this.type,
+    NodeType? type,
     ArgumentScope? scope,
     this.pagination,
   }) : name = _name(name),
+       type = type ?? NodeType(),
        scope = scope ?? ArgumentScope('root:$name');
+
+  /// Creates another root selecting the same object type with its own scope.
+  QueryRoot.withTypeOf(
+    String name,
+    QueryRoot other, {
+    ArgumentScope? scope,
+    PagePagination? pagination,
+  }) : this(name, type: other.type, scope: scope, pagination: pagination);
 }
 
 /// Declares an object-valued field connecting two schema object types.
-final class Relation<P, C> {
+final class Relation {
   /// The GraphQL field name on [parent].
   final String name;
 
   /// The object type on which this relation can be selected.
-  final NodeType<P> parent;
+  final NodeType parent;
 
   /// The object type selected through this relation.
-  final NodeType<C> child;
+  final NodeType child;
 
   /// The identity of the arguments accepted by this relation.
   ///
@@ -89,21 +98,48 @@ final class Relation<P, C> {
     this.pagination,
   }) : name = _name(name),
        scope = scope ?? ArgumentScope('relation:$name');
+
+  /// Creates a relation using the object types owned by two roots.
+  Relation.betweenRoots(
+    String name, {
+    required QueryRoot parent,
+    required QueryRoot child,
+    ArgumentScope? scope,
+    PagePagination? pagination,
+  }) : this(
+         name,
+         parent: parent.type,
+         child: child.type,
+         scope: scope,
+         pagination: pagination,
+       );
 }
 
 /// A selectable scalar field belonging to an object type.
 ///
 /// Use [ScalarField] when the same field can be filtered, or [ComparableField]
 /// when the server also supports range filters for it.
-class Field<S> {
+class Field {
   /// The GraphQL field name.
   final String name;
 
   /// The object type on which this field can be selected.
-  final NodeType<S> owner;
+  final NodeType owner;
 
   /// Creates a selectable field without filtering or sorting capabilities.
-  Field(String name, {required this.owner}) : name = _name(name);
+  Field(String name, {required Object owner})
+    : name = _name(name),
+      owner = _fieldOwner(owner);
+}
+
+NodeType _fieldOwner(Object owner) {
+  if (owner is NodeType) return owner;
+  if (owner is QueryRoot) return owner.type;
+  throw ArgumentError.value(
+    owner,
+    'owner',
+    'Expected a node type or query root',
+  );
 }
 
 /// A schema member usable by filter operators.
@@ -118,7 +154,7 @@ abstract interface class FilterField<T> {
 abstract interface class OrderedField<T> implements FilterField<T> {}
 
 /// A selectable scalar field with explicitly declared filtering capabilities.
-class ScalarField<S, T> extends Field<S> implements FilterField<T> {
+class ScalarField<T> extends Field implements FilterField<T> {
   @override
   final InputDefinition<T> input;
 
@@ -128,7 +164,7 @@ class ScalarField<S, T> extends Field<S> implements FilterField<T> {
 }
 
 /// A selectable, filterable scalar that may support range comparisons.
-final class ComparableField<S, T> extends ScalarField<S, T>
+final class ComparableField<T> extends ScalarField<T>
     implements OrderedField<T> {
   /// Creates a comparable scalar whose selection name defaults to its input.
   ComparableField({required super.owner, required super.input, super.name});

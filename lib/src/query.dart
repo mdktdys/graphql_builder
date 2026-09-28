@@ -33,7 +33,7 @@ final class Query {
   }
 
   /// Takes a snapshot of a root node and validates its argument scope.
-  void add<S>(Node<S> node) {
+  void add(Node node) {
     if (node.relation != null) {
       throw StateError('A relation-bound node cannot be added as a root.');
     }
