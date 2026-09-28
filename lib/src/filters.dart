@@ -167,12 +167,21 @@ _Argument _sortArgument(
 final class _Argument {
   final String name;
   final Object? value;
-  final Set<ArgumentScope> scopes;
+  final Set<ArgumentScope>? scopes;
 
-  _Argument(String name, Object? value, Set<ArgumentScope> scopes)
+  _Argument(String name, Object? value, Set<ArgumentScope>? scopes)
     : name = _name(name),
       value = _snapshot(value),
-      scopes = Set.unmodifiable(scopes);
+      scopes = scopes == null ? null : Set.unmodifiable(scopes);
+}
+
+Set<ArgumentScope>? _intersectScopes(
+  Set<ArgumentScope>? first,
+  Set<ArgumentScope>? second,
+) {
+  if (first == null) return second;
+  if (second == null) return first;
+  return first.intersection(second);
 }
 
 // Copy before applying changes so failed merges leave the target untouched.
@@ -184,8 +193,8 @@ void _appendArguments(List<_Argument> target, Iterable<_Argument> incoming) {
       if (_literal(previous.value) != _literal(arg.value)) {
         throw StateError('Conflicting argument: ${arg.name}.');
       }
-      final scopes = previous.scopes.intersection(arg.scopes);
-      if (scopes.isEmpty) {
+      final scopes = _intersectScopes(previous.scopes, arg.scopes);
+      if (scopes != null && scopes.isEmpty) {
         throw StateError('Argument ${arg.name} has incompatible scopes.');
       }
       merged[arg.name] = _Argument(arg.name, arg.value, scopes);

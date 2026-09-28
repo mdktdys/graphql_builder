@@ -60,6 +60,19 @@ final class ValueCodec<T> {
 
 /// Reusable codecs for common scalar inputs.
 abstract final class ValueCodecs {
+  /// Selects a built-in codec for a common non-nullable scalar type.
+  ///
+  /// Other types, including dates and nullable values, require an explicit
+  /// codec because their wire representation may depend on the server.
+  static ValueCodec<T> forType<T>() {
+    if (T == bool) return boolean as ValueCodec<T>;
+    if (T == int) return integer as ValueCodec<T>;
+    if (T == num) return number as ValueCodec<T>;
+    if (T == String) return string as ValueCodec<T>;
+    if (T == NumericId) return numericId as ValueCodec<T>;
+    throw ArgumentError('No default codec for $T. Pass codec explicitly.');
+  }
+
   /// Accepts only boolean values.
   static final ValueCodec<bool> boolean = ValueCodec<bool>(
     decode: (value) {

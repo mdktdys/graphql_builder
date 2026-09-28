@@ -36,6 +36,35 @@ void main() {
   setUp(() => s = CatalogSchema());
 
   group('declaration API', () {
+    test(
+      'a standalone scalar builds a filtered root without schema metadata',
+      () {
+        final root = QueryRoot('employee');
+        final id = ScalarField<int>(
+          name: 'id',
+          operators: {FilterOperator.equal},
+        );
+        final employee = Node(root)
+          ..add(id)
+          ..addFilters(Filters()..add(EqualFilter(id), 42));
+
+        expect(
+          compact((Query()..add(employee)).build().query),
+          'query{employee(id:42){id}}',
+        );
+      },
+    );
+
+    test('the inferred integer codec rejects values of another type', () {
+      final id = ScalarField<int>(
+        name: 'id',
+        operators: {FilterOperator.equal},
+      );
+
+      expect(() => EqualFilter(id, '42'), rejects);
+      expect(() => Filters()..add(EqualFilter(id), 42.5), rejects);
+    });
+
     test('a model-free node shares selections across roots of one type', () {
       final employees = QueryRoot('employees');
       final employee = QueryRoot.withTypeOf('employee', employees);
@@ -366,6 +395,69 @@ void main() {
   });
 
   group('schema capabilities and scopes', () {
+    test('optional owner and scope still restrict field use', () {
+      final employees = QueryRoot('employees');
+      final employee = QueryRoot.withTypeOf('employee', employees);
+      final orders = QueryRoot('orders');
+      final id = ScalarField<int>(
+        name: 'id',
+        owner: employees,
+        scopes: {employees.scope},
+        operators: {FilterOperator.equal},
+      );
+
+      final valid = Node.fromRoot(employees)
+        ..add(id)
+        ..addFilters(Filters()..add(EqualFilter(id), 42));
+      expect(
+        compact((Query()..add(valid)).build().query),
+        'query{employees(id:42){id}}',
+      );
+      expect(() => Node.fromRoot(orders)..add(id), rejects);
+      expect(
+        () => Query()
+          ..add(
+            Node.fromRoot(employee)
+              ..add(id)
+              ..addFilters(Filters()..add(EqualFilter(id), 42)),
+          ),
+        rejects,
+      );
+    });
+
+    test('a scoped duplicate narrows an unrestricted argument', () {
+      final employees = QueryRoot('employees');
+      final employee = QueryRoot.withTypeOf('employee', employees);
+      final unrestricted = ScalarField<int>(
+        name: 'id',
+        operators: {FilterOperator.equal},
+      );
+      final scoped = ScalarField<int>(
+        name: 'id',
+        scopes: {employees.scope},
+        operators: {FilterOperator.equal},
+      );
+      final filters = Filters()
+        ..add(EqualFilter(unrestricted), 42)
+        ..add(EqualFilter(scoped), 42);
+
+      final allowed = Node.fromRoot(employees)
+        ..add(unrestricted)
+        ..addFilters(filters);
+      final query = compact((Query()..add(allowed)).build().query);
+      expect(query, 'query{employees(id:42){id}}');
+      expect('id:'.allMatches(query), hasLength(1));
+      expect(
+        () => Query()
+          ..add(
+            Node.fromRoot(employee)
+              ..add(unrestricted)
+              ..addFilters(filters),
+          ),
+        rejects,
+      );
+    });
+
     test('wire names and sort capability are explicitly declared', () {
       final field = ComparableField<num>(
         owner: s.bookType,

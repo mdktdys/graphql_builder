@@ -123,16 +123,20 @@ class Field {
   /// The GraphQL field name.
   final String name;
 
-  /// The object type on which this field can be selected.
-  final NodeType owner;
+  /// The object type on which this field can be selected, if restricted.
+  final NodeType? owner;
 
   /// Creates a selectable field without filtering or sorting capabilities.
-  Field(String name, {required Object owner})
+  ///
+  /// Omit [owner] to allow this field on any node. Pass a root or node type to
+  /// reject accidental selection on another schema object.
+  Field(String name, {Object? owner})
     : name = _name(name),
       owner = _fieldOwner(owner);
 }
 
-NodeType _fieldOwner(Object owner) {
+NodeType? _fieldOwner(Object? owner) {
+  if (owner == null) return null;
   if (owner is NodeType) return owner;
   if (owner is QueryRoot) return owner.type;
   throw ArgumentError.value(
@@ -158,16 +162,56 @@ class ScalarField<T> extends Field implements FilterField<T> {
   @override
   final InputDefinition<T> input;
 
-  /// Creates a scalar whose selection name defaults to [InputDefinition.name].
-  ScalarField({required super.owner, required this.input, String? name})
-    : super(name ?? input.name);
+  /// Creates a selectable scalar with optional filter metadata.
+  ///
+  /// For common value types, [codec] can be omitted. Omitted [scopes] allow
+  /// filters on any root or relation; pass explicit scopes for local checks.
+  /// When [input] is supplied, it provides all filter metadata instead.
+  ScalarField({
+    super.owner,
+    InputDefinition<T>? input,
+    String? name,
+    ValueCodec<T>? codec,
+    Set<ArgumentScope>? scopes,
+    Set<FilterOperator>? operators,
+    Map<FilterOperator, String> argumentNames = const {},
+    String? sortArgument,
+  }) : input =
+           input ??
+           InputDefinition<T>(
+             name ?? (throw ArgumentError.notNull('name')),
+             codec: codec ?? ValueCodecs.forType<T>(),
+             scopes: scopes,
+             operators: operators ?? const {},
+             argumentNames: argumentNames,
+             sortArgument: sortArgument,
+           ),
+       super(name ?? input?.name ?? (throw ArgumentError.notNull('name'))) {
+    if (input != null &&
+        (codec != null ||
+            scopes != null ||
+            operators != null ||
+            argumentNames.isNotEmpty ||
+            sortArgument != null)) {
+      throw ArgumentError('Provide either input or inline filter metadata.');
+    }
+  }
 }
 
 /// A selectable, filterable scalar that may support range comparisons.
 final class ComparableField<T> extends ScalarField<T>
     implements OrderedField<T> {
   /// Creates a comparable scalar whose selection name defaults to its input.
-  ComparableField({required super.owner, required super.input, super.name});
+  ComparableField({
+    super.owner,
+    super.input,
+    super.name,
+    super.codec,
+    super.scopes,
+    super.operators,
+    super.argumentNames,
+    super.sortArgument,
+  });
 }
 
 /// A filterable argument which cannot be added to a node's selection.
@@ -226,8 +270,8 @@ final class InputDefinition<T> {
   /// Converts caller values into GraphQL literal values.
   final ValueCodec<T> codec;
 
-  /// The nonempty set of root and relation scopes accepting this input.
-  final Set<ArgumentScope> scopes;
+  /// Allowed root and relation scopes, or null when unrestricted.
+  final Set<ArgumentScope>? scopes;
 
   /// The operators explicitly supported by this server input.
   final Set<FilterOperator> operators;
@@ -245,16 +289,16 @@ final class InputDefinition<T> {
   InputDefinition(
     String name, {
     required this.codec,
-    required Set<ArgumentScope> scopes,
+    Set<ArgumentScope>? scopes,
     required Set<FilterOperator> operators,
     Map<FilterOperator, String> argumentNames = const {},
     String? sortArgument,
   }) : name = _name(name),
-       scopes = Set<ArgumentScope>.unmodifiable(scopes),
+       scopes = scopes == null ? null : Set<ArgumentScope>.unmodifiable(scopes),
        operators = Set<FilterOperator>.unmodifiable(operators),
        argumentNames = Map<FilterOperator, String>.unmodifiable(argumentNames),
        sortArgument = sortArgument == null ? null : _name(sortArgument) {
-    if (this.scopes.isEmpty) {
+    if (scopes != null && scopes.isEmpty) {
       throw ArgumentError.value(
         scopes,
         'scopes',

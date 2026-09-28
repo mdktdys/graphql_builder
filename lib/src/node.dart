@@ -32,27 +32,38 @@ class Node {
   final List<_Argument> _arguments = [];
   Page? _page;
 
-  Node(this.type, {this.root, this.relation, this.alias}) {
+  /// Creates a selection from a root, relation or explicit node type.
+  ///
+  /// Passing a root or relation also binds this node to that location.
+  Node(Object source, {QueryRoot? root, Relation? relation, this.alias})
+    : type = _nodeTypeFrom(source),
+      root = source is QueryRoot ? source : root,
+      relation = source is Relation ? source : relation {
     if (alias != null) _name(alias!);
-    if (root != null && !identical(root!.type, type)) {
+    if (source is QueryRoot && (root != null || relation != null)) {
+      throw ArgumentError('A root source cannot have another binding.');
+    }
+    if (source is Relation && (root != null || relation != null)) {
+      throw ArgumentError('A relation source cannot have another binding.');
+    }
+    if (this.root != null && !identical(this.root!.type, type)) {
       throw ArgumentError('Root and node types do not match.');
     }
-    if (relation != null && !identical(relation!.child, type)) {
+    if (this.relation != null && !identical(this.relation!.child, type)) {
       throw ArgumentError('Relation and node child types do not match.');
     }
   }
 
   /// Creates a node using the type descriptor owned by [root].
-  Node.fromRoot(QueryRoot root, {String? alias})
-    : this(root.type, root: root, alias: alias);
+  Node.fromRoot(QueryRoot root, {String? alias}) : this(root, alias: alias);
 
   /// Creates a node using the child type descriptor of [relation].
   Node.fromRelation(Relation relation, {String? alias})
-    : this(relation.child, relation: relation, alias: alias);
+    : this(relation, alias: alias);
 
-  /// Adds a scalar selection belonging to this exact schema type.
+  /// Adds a scalar selection, checking its owner when one was declared.
   void add(Field field) {
-    if (!identical(field.owner, type)) {
+    if (field.owner != null && !identical(field.owner, type)) {
       throw ArgumentError('Field ${field.name} belongs to a different type.');
     }
     _appendFields(_fields, [_Field(field.name)]);
@@ -126,6 +137,17 @@ class Node {
   }
 }
 
+NodeType _nodeTypeFrom(Object source) {
+  if (source is NodeType) return source;
+  if (source is QueryRoot) return source.type;
+  if (source is Relation) return source.child;
+  throw ArgumentError.value(
+    source,
+    'source',
+    'Expected a node type, query root or relation',
+  );
+}
+
 Page? _mergePage(Page? previous, Page? next) {
   if (previous != null &&
       next != null &&
@@ -142,7 +164,8 @@ Map<String, Object?> _bindArguments(
 ) {
   final result = <String, Object?>{};
   for (final arg in selection._arguments) {
-    if (!arg.scopes.contains(scope)) {
+    final allowedScopes = arg.scopes;
+    if (allowedScopes != null && !allowedScopes.contains(scope)) {
       throw StateError('${arg.name} is not available in scope ${scope.name}.');
     }
     result[arg.name] = arg.value;

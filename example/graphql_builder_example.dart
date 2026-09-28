@@ -1,30 +1,26 @@
 import 'package:graphql_builder/graphql_builder.dart';
 
-final class EmployeeNode extends Node {
-  EmployeeNode.one() : super.fromRoot(employeeRoot);
-  EmployeeNode.list() : super.fromRoot(employeesRoot);
+final QueryRoot _objectRoot = QueryRoot('employee');
+final QueryRoot _listRoot = QueryRoot('employees');
 
-  static final QueryRoot employeesRoot = QueryRoot('employees');
-  static final QueryRoot employeeRoot = QueryRoot.withTypeOf(
-    'employee',
-    employeesRoot,
-  );
+final ScalarField<int> _id = ScalarField<int>(
+  name: 'id',
+  operators: {
+    FilterOperator.equal
+  },
+);
 
-  static final ScalarField<int> id = ScalarField<int>(
-    owner: employeesRoot,
-    input: InputDefinition<int>(
-      'id',
-      codec: ValueCodecs.integer,
-      scopes: {employeesRoot.scope, employeeRoot.scope},
-      operators: {FilterOperator.equal},
-    ),
-  );
+final class EmployeeBuilder {
+  String byId(int employeeId) {
+    final employee = Node(_listRoot)
+      ..add(_id)
+      ..addFilters(Filters()..add(EqualFilter(_id), employeeId));
+
+    final GraphRequest request = (Query()..add(employee)).build(); 
+    return request.query;
+  }
 }
 
 void main() {
-  final employee = EmployeeNode.one()
-    ..add(EmployeeNode.id)
-    ..addFilters(Filters()..add(EqualFilter(EmployeeNode.id), 3));
-
-  print((Query()..add(employee)).build().query);
+  print(EmployeeBuilder().byId(42));
 }
