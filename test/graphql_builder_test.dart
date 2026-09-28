@@ -36,6 +36,54 @@ void main() {
   setUp(() => s = CatalogSchema());
 
   group('declaration API', () {
+    test('unlabeled descriptors use distinct automatic argument scopes', () {
+      final bookType = NodeType<Book>();
+      final authorType = NodeType<Author>();
+      final books = QueryRoot<Book>('books', type: bookType);
+      final otherBooks = QueryRoot<Book>('otherBooks', type: bookType);
+      final author = Relation<Book, Author>(
+        'author',
+        parent: bookType,
+        child: authorType,
+      );
+      final bookId = ScalarField<Book, int>(
+        owner: bookType,
+        input: InputDefinition<int>(
+          'id',
+          codec: ValueCodecs.integer,
+          scopes: {books.scope},
+          operators: {FilterOperator.equal},
+        ),
+      );
+      final authorId = ScalarField<Author, int>(
+        owner: authorType,
+        input: InputDefinition<int>(
+          'id',
+          codec: ValueCodecs.integer,
+          scopes: {author.scope},
+          operators: {FilterOperator.equal},
+        ),
+      );
+
+      final node = Node<Book>(bookType, root: books)
+        ..add(bookId)
+        ..addFilters(Filters()..add(EqualFilter(bookId), 42))
+        ..addNode(
+          Node<Author>(authorType, relation: author)
+            ..add(authorId)
+            ..addFilters(Filters()..add(EqualFilter(authorId), 7)),
+        );
+      expect(
+        compact((Query()..add(node)).build().query),
+        'query{books(id:42){idauthor(id:7){id}}}',
+      );
+
+      final wrongRoot = Node<Book>(bookType, root: otherBooks)
+        ..add(bookId)
+        ..addFilters(Filters()..add(EqualFilter(bookId), 42));
+      expect(() => Query()..add(wrongRoot), rejects);
+    });
+
     test('mixed bound and unbound filters work with public Node subclass', () {
       final filters = Filters()
         ..add(BooleanFilter(s.available), true)

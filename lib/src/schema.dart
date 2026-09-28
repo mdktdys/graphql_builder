@@ -5,11 +5,14 @@ part of '../graphql_builder.dart';
 /// Descriptors use identity equality. Declare one shared instance for every
 /// object type and reuse it in fields, roots, relations and nodes.
 final class NodeType<S> {
-  /// The validated GraphQL type name, used in validation messages.
+  /// A diagnostic label. It is never serialized into a query.
   final String name;
 
   /// Creates a reusable descriptor for an object type.
-  NodeType(String name) : name = _name(name);
+  ///
+  /// An omitted label defaults to the Dart type's display name. Explicit
+  /// labels are validated as GraphQL names for backwards compatibility.
+  NodeType([String? name]) : name = name == null ? '$S' : _name(name);
 }
 
 /// Identifies a root or relation on which arguments may be used.
@@ -17,12 +20,12 @@ final class NodeType<S> {
 /// The label is descriptive and may contain dots. Scope compatibility is based
 /// on descriptor identity rather than the label.
 final class ArgumentScope {
-  /// A nonempty descriptive label for this argument scope.
+  /// A diagnostic label. Scope compatibility uses identity, not this text.
   final String name;
 
-  /// Creates a reusable argument scope.
-  ArgumentScope(this.name) {
-    if (name.trim().isEmpty) {
+  /// Creates a reusable argument scope with an optional diagnostic label.
+  ArgumentScope([String? name]) : name = name ?? 'unnamed scope' {
+    if (name != null && name.trim().isEmpty) {
       throw ArgumentError.value(
         name,
         'name',
@@ -41,6 +44,8 @@ final class QueryRoot<S> {
   final NodeType<S> type;
 
   /// The identity of the arguments accepted by this root.
+  ///
+  /// A unique scope is created when none is passed to the constructor.
   final ArgumentScope scope;
 
   /// The pagination convention accepted by this root, if any.
@@ -50,9 +55,10 @@ final class QueryRoot<S> {
   QueryRoot(
     String name, {
     required this.type,
-    required this.scope,
+    ArgumentScope? scope,
     this.pagination,
-  }) : name = _name(name);
+  }) : name = _name(name),
+       scope = scope ?? ArgumentScope('root:$name');
 }
 
 /// Declares an object-valued field connecting two schema object types.
@@ -67,6 +73,8 @@ final class Relation<P, C> {
   final NodeType<C> child;
 
   /// The identity of the arguments accepted by this relation.
+  ///
+  /// A unique scope is created when none is passed to the constructor.
   final ArgumentScope scope;
 
   /// The pagination convention accepted by this relation, if any.
@@ -77,9 +85,10 @@ final class Relation<P, C> {
     String name, {
     required this.parent,
     required this.child,
-    required this.scope,
+    ArgumentScope? scope,
     this.pagination,
-  }) : name = _name(name);
+  }) : name = _name(name),
+       scope = scope ?? ArgumentScope('relation:$name');
 }
 
 /// A selectable scalar field belonging to an object type.
